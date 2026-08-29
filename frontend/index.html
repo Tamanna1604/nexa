@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Nexa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- the living object -->
+  <canvas id="field"></canvas>
+
+  <!-- one line of context, nothing else -->
+  <div id="caption" class="caption"></div>
+
+  <!-- mic status: tells you at a glance whether it's actually listening -->
+  <div id="status" class="status" title="microphone status">
+    <span id="statusDot" class="status__dot"></span>
+    <span id="statusText" class="status__text">…</span>
+  </div>
+
+  <!-- top-right controls -->
+  <div class="controls">
+    <button id="muteBtn"  class="ctl" title="Mute Nexa's voice" aria-label="Mute voice">🔊</button>
+    <button id="detailBtn" class="ctl" title="Show what Nexa heard / used" aria-label="Details">◍</button>
+    <button id="sleepBtn" class="ctl" title="Send Nexa to sleep" aria-label="Sleep">☾</button>
+  </div>
+
+  <!-- optional glass panel: heard text + retrieved sources + memories -->
+  <aside id="details" class="details" hidden>
+    <section>
+      <h3>Voice</h3>
+      <select id="voiceSelect" class="voice-select"></select>
+      <button id="voiceTest" class="voice-test">Test</button>
+    </section>
+    <section><h3>Heard</h3><p id="dHeard">—</p></section>
+    <section><h3>Sources used</h3><div id="dSources"><p class="muted">—</p></div></section>
+    <section><h3>Memory in play</h3><div id="dMemory"><p class="muted">—</p></div></section>
+    <section><h3>Memory changed</h3><div id="dMemChange"><p class="muted">—</p></div></section>
+  </aside>
+
+  <!-- gesture gate: browsers need a click before mic + audio -->
+  <div id="gate" class="gate">
+    <div class="gate__inner">
+      <div class="gate__orb"></div>
+      <h1>Nexa</h1>
+      <p id="gateMsg">Tap to wake her. Then just talk — say <b>“Nexa”</b> to get her attention.</p>
+      <button id="gateBtn" class="gate__btn">Wake Nexa</button>
+      <p id="gateNote" class="gate__note"></p>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

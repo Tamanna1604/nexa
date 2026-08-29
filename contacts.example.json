@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy this to contacts.json and fill in real numbers. Full country code, no + or spaces needed. Lookups match the FIRST word of the name.",
+  "Vrinda": "+91 98765 43210",
+  "Mom": "+91 90000 00000",
+  "Dad": "+91 90000 00001"
+}

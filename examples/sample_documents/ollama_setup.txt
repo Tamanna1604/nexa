@@ -1,0 +1,32 @@
+Ollama setup notes for Nexa
+
+Ollama runs large language models locally. Install it from ollama.com, then pull
+the models Nexa needs:
+
+    ollama pull qwen3:4b
+    ollama pull nomic-embed-text
+
+The server listens on http://localhost:11434 by default. Nexa talks to it
+through the official python client.
+
+Performance on this laptop
+
+The development machine has an Intel UHD integrated GPU, which Ollama does not
+use for acceleration, so inference runs entirely on the CPU. The qwen3:4b model
+produces roughly two to four tokens per second in that setup, which feels slow
+for long answers.
+
+Ways to make it faster:
+- Switch to qwen3:1.7b, which is about three times faster and still coherent for
+  assistant tasks.
+- Stream the response so the user sees tokens as they arrive instead of waiting
+  for the whole answer.
+- Keep prompts short: trim retrieved context to the few chunks that matter and
+  cap the conversation history window.
+- Move inference to a machine with a dedicated NVIDIA GPU, or a hosted endpoint,
+  and point OLLAMA_HOST at it.
+
+Embeddings
+
+The nomic-embed-text model is small (about 137 million parameters) and fast even
+on CPU, so embedding documents during ingestion is not a bottleneck.

@@ -1,0 +1,20 @@
+# ── core ──────────────────────────────────────────────
+ollama>=0.3            # local LLM + embeddings client
+chromadb>=0.5          # vector store
+pydantic>=2.7
+pydantic-settings>=2.2 # Settings from .env
+python-dotenv>=1.0
+
+# ── RAG ───────────────────────────────────────────────
+numpy>=1.26            # percentile / cosine math in the semantic chunker
+rank-bm25>=0.2.2       # sparse (keyword) retrieval
+fastembed>=0.3         # ONNX cross-encoder reranker (no PyTorch)
+pypdf>=4.2             # PDF text extraction
+
+# ── web API + frontend host ───────────────────────────
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9  # file uploads
+
+# ── dev ───────────────────────────────────────────────
+pytest>=8.0

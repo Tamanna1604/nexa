@@ -1,0 +1,41 @@
+# ── secrets & personal data ───────────────────────────
+.env
+contacts.json
+
+# ── generated state (rebuilt from documents/ + conversations) ──
+memory.db
+memory.db-journal
+memory.db-wal
+memory.db-shm
+chroma_db/
+data/
+.fastembed_cache/
+
+# ── user documents: keep the folder, ignore its contents ──
+documents/*
+!documents/.gitkeep
+
+# ── python ────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# ── virtual environments ──────────────────────────────
+venv/
+.venv/
+env/
+
+# ── editors / OS ──────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── local scratch (root-level only, so package __init__.py is safe) ──
+/_*.py
+/_*.log
+*.tmp
