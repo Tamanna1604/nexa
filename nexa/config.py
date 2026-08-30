@@ -123,15 +123,29 @@ class Settings(BaseSettings):
     TIMEZONE: str | None = None
     # Used by get_weather when the user doesn't name a place.
     DEFAULT_LOCATION: str = "Pune"
-    # Let the assistant launch apps on this machine (open_app tool).
+    # Let the assistant launch apps on this machine (open_app tool). Also gates
+    # the whatsapp tool and the `watch` tool (opens Netflix/Prime/Hotstar).
     ALLOW_APP_LAUNCH: bool = True
+    # The web_search tool - top results from DuckDuckGo as text (keyless).
+    WEB_SEARCH_ENABLED: bool = True
+    # Let the `watch` tool actually click through to playback via Playwright
+    # (pip install playwright && playwright install chromium). Off = it just
+    # opens the service's search page in your browser.
+    BROWSER_AUTOMATION: bool = False
+    # Dedicated Chrome profile dir for that automation - log into Netflix /
+    # Prime / Hotstar once in that window and the session persists here.
+    BROWSER_PROFILE_DIR: str = str(ROOT / ".nexa_browser")
+    # Which Netflix "Who's watching?" profile to pick before playing. Blank =
+    # take whatever profile is already active / the first one.
+    NETFLIX_PROFILE: str = "Tamzy"
     # Extra "app name" -> launch target, e.g. {"outlook": "outlookmail:"}.
     # Set as JSON in .env:  EXTRA_APP_ALIASES='{"figma": "figma:"}'
     EXTRA_APP_ALIASES: dict[str, str] = {}
     # name -> phone book for the whatsapp tool (WhatsApp's own contacts can't be read)
     CONTACTS_FILE: str = str(ROOT / "contacts.json")
-    # allow driving app windows with the mouse/keyboard (whatsapp call button).
-    # off by default - it's fragile and moves your cursor.
+    # allow driving app windows with the mouse/keyboard (whatsapp call button,
+    # whatsapp action='send' pressing Enter). off by default - it's fragile and
+    # takes over focus. needs `pip install pywinauto`.
     ALLOW_UI_AUTOMATION: bool = False
 
     # ---- API -------------------------------------------------------

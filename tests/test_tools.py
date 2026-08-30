@@ -111,3 +111,125 @@ def test_open_app_launch_failure_is_reported(monkeypatch):
 
     monkeypatch.setattr(apps, "_start", boom)
     assert "couldn't find" in apps.OpenAppTool().run(app="ghost").lower()
+
+
+# ── web_search (DuckDuckGo HTML faked) ───────────────────────────────
+class _FakeSearchResp:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        pass
+
+
+class _FakeSearchClient:
+    def __init__(self, text):
+        self._text = text
+
+    def get(self, url, params=None):
+        return _FakeSearchResp(self._text)
+
+    def post(self, url, data=None):
+        return _FakeSearchResp(self._text)
+
+
+_DDG_SAMPLE = """
+<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&rut=x">
+  First <b>result</b></a>
+<a class="result__snippet" href="/x">Snippet <b>one</b>.</a>
+<a class="result__a" href="https://example.org/b">Second result</a>
+<a class="result__snippet" href="/y">Snippet two.</a>
+"""
+
+
+def test_web_search_parses_and_unwraps_results():
+    from nexa.tools.web import WebSearchTool
+
+    out = WebSearchTool(client=_FakeSearchClient(_DDG_SAMPLE)).run(query="python")
+    assert "First result" in out
+    assert "https://example.com/a" in out       # uddg redirect unwrapped
+    assert "Snippet one." in out
+    assert "Second result" in out
+
+
+def test_web_search_needs_a_query():
+    from nexa.tools.web import WebSearchTool
+
+    assert "search for" in WebSearchTool(client=_FakeSearchClient("")).run().lower()
+
+
+def test_web_search_open_browser_launches_google(monkeypatch):
+    import nexa.tools.web as web
+
+    launched = []
+    monkeypatch.setattr(web, "_start", lambda url: launched.append(url))
+    web.WebSearchTool(client=_FakeSearchClient(_DDG_SAMPLE)).run(
+        query="today's news", open_browser=True
+    )
+    assert launched and "google.com/search?q=today" in launched[0]
+
+
+# ── watch / streaming (launch monkeypatched) ─────────────────────────
+def test_watch_resolves_alias_and_opens_search(monkeypatch):
+    import nexa.tools.streaming as streaming
+
+    launched = []
+    monkeypatch.setattr(streaming, "_start", lambda url: launched.append(url))
+    out = streaming.StreamingTool().run(service="disney", title="The Bear")
+    assert launched == ["https://www.hotstar.com/in/search?q=The+Bear"]
+    assert "jiohotstar" in out.lower()
+
+
+def test_watch_no_title_opens_home(monkeypatch):
+    import nexa.tools.streaming as streaming
+
+    launched = []
+    monkeypatch.setattr(streaming, "_start", lambda url: launched.append(url))
+    streaming.StreamingTool().run(service="netflix")
+    assert launched == ["https://www.netflix.com"]
+
+
+def test_watch_unknown_service_asks():
+    from nexa.tools.streaming import StreamingTool
+
+    assert "which one" in StreamingTool().run(service="mubi").lower()
+
+
+def test_watch_play_falls_back_when_automation_off(monkeypatch):
+    import nexa.tools.streaming as streaming
+
+    launched = []
+    monkeypatch.setattr(streaming, "_start", lambda url: launched.append(url))
+    monkeypatch.setattr(streaming.browser, "available", lambda: False)
+    out = streaming.StreamingTool().run(
+        service="netflix", title="Friends", action="play"
+    )
+    assert launched == ["https://www.netflix.com/search?q=Friends"]
+    assert "friends" in out.lower()
+
+
+# ── whatsapp send (no UI automation -> graceful fallback) ────────────
+class _StubContacts:
+    def reload(self):
+        pass
+
+    def resolve(self, query):
+        from nexa.tools.contacts import Contact
+
+        return Contact(name="Vrinda", phone="919876500000")
+
+    def all(self):
+        return []
+
+
+def test_whatsapp_send_prefills_and_reports_manual_step(monkeypatch):
+    import nexa.tools.whatsapp as whatsapp
+
+    launched = []
+    monkeypatch.setattr(whatsapp, "_start", lambda uri: launched.append(uri))
+    monkeypatch.setattr(whatsapp.settings, "ALLOW_UI_AUTOMATION", False)
+
+    tool = whatsapp.WhatsAppTool(contacts=_StubContacts())
+    out = tool.run(contact="Vrinda", action="send", message="running late")
+    assert launched and "text=running%20late" in launched[0]
+    assert "typed" in out.lower()

@@ -37,8 +37,10 @@ from nexa.storage.base import StructuredStore, VectorStore
 from nexa.tools import (
     ClockTool,
     OpenAppTool,
+    StreamingTool,
     ToolRegistry,
     WeatherTool,
+    WebSearchTool,
     WhatsAppTool,
     current_time_string,
 )
@@ -136,9 +138,30 @@ class Nexa:
 
         specs = self.tools.specs()
         convo = list(messages)
+        # small hosted models sometimes "refuse" instead of searching; when the
+        # ask is unambiguously a lookup, make the first round call web_search.
+        force_first = (
+            _FORCE_WEB.search(user_message)
+            and any(s["function"]["name"] == "web_search" for s in specs)
+        )
         for i in range(settings.TOOL_MAX_ITERS):
             debug(f"PROMPT SENT TO MODEL (tool round {i + 1}, {len(convo)} msgs)", convo)
-            resp = self.llm.chat_raw(convo, tools=specs)
+            choice = (
+                {"type": "function", "function": {"name": "web_search"}}
+                if i == 0 and force_first
+                else None
+            )
+            try:
+                resp = self.llm.chat_raw(convo, tools=specs, tool_choice=choice)
+            except RuntimeError as exc:
+                # forcing a tool call can 400 if the model answers directly
+                # anyway (small hosted models do this). Recover, don't crash.
+                if choice is None or "tool_use_failed" not in str(exc):
+                    raise
+                direct = _failed_generation(str(exc))
+                if direct and "did not call a tool" in str(exc):
+                    return direct
+                resp = self.llm.chat_raw(convo, tools=specs)  # retry, unforced
             calls = resp.get("tool_calls") or []
             if not calls:
                 debug("TOOL-LOOP: final answer", resp.get("content") or "")
@@ -157,8 +180,43 @@ class Nexa:
                 convo.append(
                     {"role": "tool", "tool_call_id": call.get("id", ""), "content": out}
                 )
-        # hit the iteration cap - force a plain answer
-        return self.llm.chat(convo)
+        # hit the iteration cap - force a plain answer from what we've gathered
+        return self._force_plain_answer(convo)
+
+    def _force_plain_answer(self, convo: list[Message]) -> str:
+        """Last resort when the tool loop won't converge. Some hosted models
+        (Groq gpt-oss) return HTTP 400 - "tool choice is none, but model called
+        a tool" - if the request carries tool-call history but no `tools`. So we
+        flatten the tool scaffolding into plain text and ask once more, plainly."""
+        flat: list[Message] = []
+        for m in convo:
+            role = m.get("role")
+            if role == "tool":
+                flat.append(
+                    {"role": "system", "content": f"[tool result] {m.get('content', '')}"}
+                )
+            elif role == "assistant" and m.get("tool_calls"):
+                if m.get("content"):
+                    flat.append({"role": "assistant", "content": m["content"]})
+            else:
+                flat.append(m)
+        flat.append(
+            {
+                "role": "system",
+                "content": (
+                    "Answer the user now, in plain text, using the tool results "
+                    "above. Do not call any tools."
+                ),
+            }
+        )
+        try:
+            return self.llm.chat(flat)
+        except Exception as exc:  # noqa: BLE001
+            debug("FORCE-PLAIN-ANSWER failed", str(exc))
+            return (
+                "I pulled some information but couldn't put the reply together. "
+                "Try asking again, a little more specifically."
+            )
 
     # ------------------------------------------------------------------
     def respond(self, user_message: str, conversation_id: str | None = None) -> RespondResult:
@@ -245,7 +303,32 @@ _TOOL_HINT = re.compile(
     r"weather|temperature|forecast|rain|raining|sunny|cloudy|snow|humid|"
     r"hot|cold|windy|degrees?|celsius|fahrenheit|"
     r"open|launch|start up|fire up|bring up|pull up|"
-    r"whatsapp|call|ring|dial|message|text|msg)\b",
+    r"whatsapp|call|ring|dial|message|text|msg|"
+    r"search|google|look up|lookup|browse|web|news|price|"
+    r"mean|meaning|define|definition|explain|what is|what's|whats|"
+    r"who is|tell me about|latest|current|"
+    r"netflix|prime video|hotstar|jiohotstar|disney|youtube|"
+    r"watch|stream|streaming|series|episode|binge|play)\b",
+    re.IGNORECASE,
+)
+
+
+def _failed_generation(err_text: str) -> str:
+    """Pull the model's text out of a Groq `tool_use_failed` 400 body."""
+    m = re.search(r'"failed_generation"\s*:\s*"((?:[^"\\]|\\.)*)"', err_text)
+    if not m:
+        return ""
+    try:
+        return json.loads(f'"{m.group(1)}"').strip()
+    except (json.JSONDecodeError, ValueError):
+        return m.group(1).strip()
+
+
+# an ask that is unambiguously "go look this up on the web"
+_FORCE_WEB = re.compile(
+    r"\b(news|headlines?|breaking|current events|"
+    r"meaning of|what does .+ mean|define|definition of|"
+    r"search (for|up|google)|look (this |it )?up|google (it|this|for))\b",
     re.IGNORECASE,
 )
 
@@ -362,9 +445,12 @@ def build_nexa() -> NexaBundle:
     tools = None
     if settings.TOOLS_ENABLED:
         tool_list = [ClockTool(settings.TIMEZONE), WeatherTool(settings.DEFAULT_LOCATION)]
+        if settings.WEB_SEARCH_ENABLED:
+            tool_list.append(WebSearchTool())
         if settings.ALLOW_APP_LAUNCH:
             tool_list.append(OpenAppTool())
             tool_list.append(WhatsAppTool())
+            tool_list.append(StreamingTool())
         tools = ToolRegistry(tool_list)
 
     nexa = Nexa(llm, memory, rag, store, tools=tools)

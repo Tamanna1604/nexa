@@ -2,13 +2,17 @@
 
 Reliable:  opening the chat  (whatsapp://send?phone=...)
 Reliable:  pre-filling a message to send
-Best-effort: placing the call - WhatsApp exposes no API for this, so we drive
-the desktop UI with pywinauto. Needs ALLOW_UI_AUTOMATION=true and
-`pip install pywinauto`; it can break on a WhatsApp update.
+Best-effort: actually sending (pressing Enter) and placing a call - WhatsApp
+exposes no API, so we drive the desktop UI. Needs ALLOW_UI_AUTOMATION=true.
+Sending uses pywinauto if installed, otherwise a keystroke via PowerShell on
+Windows (no extra package). A call needs pywinauto. UI automation can break on
+a WhatsApp update.
 """
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import time
 from typing import Any
 from urllib.parse import quote
@@ -24,15 +28,20 @@ class WhatsAppTool(Tool):
     description = (
         "Open WhatsApp for a contact. action='open' just opens the chat; "
         "action='message' opens it with text pre-typed (the user still presses "
-        "send); action='call' opens the chat and tries to start a voice call. "
-        "Match the contact by first name."
+        "send); action='send' opens it AND presses Enter to actually send the "
+        "message; action='call' opens the chat and tries to start a voice call. "
+        "'send' and 'call' need UI automation enabled. Match the contact by "
+        "first name."
     )
     parameters = {
         "type": "object",
         "properties": {
             "contact": {"type": "string", "description": "Contact name, e.g. 'Vrinda'."},
-            "action": {"type": "string", "enum": ["open", "message", "call"]},
-            "message": {"type": "string", "description": "Text for action='message'."},
+            "action": {"type": "string", "enum": ["open", "message", "send", "call"]},
+            "message": {
+                "type": "string",
+                "description": "Text for action='message' or action='send'.",
+            },
         },
         "required": ["contact"],
     }
@@ -59,7 +68,7 @@ class WhatsAppTool(Tool):
             )
 
         uri = f"whatsapp://send?phone={c.phone}"
-        if action == "message" and message:
+        if action in ("message", "send") and message:
             uri += f"&text={quote(message)}"
         try:
             _start(uri)
@@ -71,6 +80,13 @@ class WhatsAppTool(Tool):
             if ok:
                 return f"Calling {c.name} on WhatsApp."
             return f"Opened {c.name}'s chat — {note}"
+        if action == "send":
+            if not message:
+                return f"Opened {c.name}'s chat — what should I send?"
+            ok, note = self._try_send()
+            if ok:
+                return f'Sent to {c.name} on WhatsApp: "{message}"'
+            return f"Opened {c.name}'s chat with your message typed — {note}"
         if action == "message":
             return f"Opened {c.name}'s chat with your message ready to send."
         return f"Opened {c.name}'s chat on WhatsApp."
@@ -99,3 +115,47 @@ class WhatsAppTool(Tool):
         except Exception as exc:  # noqa: BLE001
             return False, f"couldn't drive the WhatsApp window ({exc})."
         return False, "couldn't find the call button — press it yourself."
+
+    # ------------------------------------------------------------------
+    def _try_send(self) -> tuple[bool, str]:
+        """Press Enter in the WhatsApp window to send the pre-typed text.
+
+        Tries pywinauto first (focuses the WhatsApp window explicitly); falls
+        back to a PowerShell keystroke on Windows so no extra package is needed.
+        """
+        if not settings.ALLOW_UI_AUTOMATION:
+            return False, "set ALLOW_UI_AUTOMATION=true in .env for me to send it."
+
+        # 1) pywinauto - precise, focuses the right window
+        try:
+            from pywinauto import Desktop
+            from pywinauto.keyboard import send_keys
+
+            time.sleep(2.5)  # let the chat load and the text pre-fill
+            win = Desktop(backend="uia").window(title_re=".*WhatsApp.*")
+            win.set_focus()
+            time.sleep(0.3)
+            send_keys("{ENTER}")
+            return True, ""
+        except ImportError:
+            pass  # not installed - try the no-dependency path
+        except Exception as exc:  # noqa: BLE001
+            return False, f"couldn't drive the WhatsApp window ({exc})."
+
+        # 2) no package: WhatsApp is foreground after the URI opens it; send Enter
+        if sys.platform == "win32":
+            try:
+                subprocess.run(
+                    [
+                        "powershell", "-NoProfile", "-Command",
+                        "Start-Sleep -Seconds 3; "
+                        "(New-Object -ComObject WScript.Shell).SendKeys('~')",
+                    ],
+                    check=True,
+                    timeout=15,
+                    creationflags=0x08000000,  # CREATE_NO_WINDOW
+                )
+                return True, ""
+            except Exception as exc:  # noqa: BLE001
+                return False, f"couldn't send the keystroke ({exc})."
+        return False, "press Enter to send (`pip install pywinauto` for auto-send)."

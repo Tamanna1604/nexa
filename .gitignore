@@ -11,6 +11,11 @@ chroma_db/
 data/
 .fastembed_cache/
 
+# ── browser automation: Nexa's throwaway Chrome profile (watch tool) ──
+.nexa_browser/
+.playwright/
+ms-playwright/
+
 # ── user documents: keep the folder, ignore its contents ──
 documents/*
 !documents/.gitkeep

@@ -97,16 +97,23 @@ class OpenAICompatibleLLM(LLMClient):
     def chat(self, messages: list[Message]) -> str:
         return self.chat_raw(messages).get("content") or ""
 
-    def chat_raw(self, messages: list[Message], tools: list[dict] | None = None) -> dict:
+    def chat_raw(
+        self,
+        messages: list[Message],
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
+    ) -> dict:
         """One non-streamed turn. Returns {'content': str|None, 'tool_calls': [...]}.
 
         `tool_calls` is populated when the model wants to call a tool instead of
-        answering - see the loop in `nexa/brain.py`. Retries on 429 (rate limit).
+        answering - see the loop in `nexa/brain.py`. `tool_choice` defaults to
+        "auto"; pass {"type":"function","function":{"name":...}} to force one.
+        Retries on 429 (rate limit).
         """
         body = self._body(messages, stream=False)
         if tools:
             body["tools"] = tools
-            body["tool_choice"] = "auto"
+            body["tool_choice"] = tool_choice or "auto"
 
         for attempt in range(_MAX_RETRIES):
             r = self._client.post(
