@@ -9,6 +9,7 @@ from nexa.tools.apps import OpenAppTool
 from nexa.tools.base import Tool
 from nexa.tools.clock import ClockTool, current_time_string
 from nexa.tools.contacts import Contacts
+from nexa.tools.gmail import GmailTool
 from nexa.tools.registry import ToolRegistry
 from nexa.tools.streaming import StreamingTool
 from nexa.tools.weather import WeatherTool
@@ -20,6 +21,7 @@ __all__ = [
     "ClockTool",
     "current_time_string",
     "Contacts",
+    "GmailTool",
     "OpenAppTool",
     "StreamingTool",
     "ToolRegistry",

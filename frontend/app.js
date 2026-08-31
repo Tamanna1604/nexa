@@ -53,19 +53,28 @@
   }
 
   const SPRITES = {
-    idle: makeGlow(120, 180, 255),
-    wake: makeGlow(180, 245, 255),
-    listening: makeGlow(120, 225, 255),
-    thinking: makeGlow(170, 130, 255),
-    speaking: makeGlow(255, 120, 220),
+    idle: makeGlow(120, 178, 255),
+    wake: makeGlow(170, 244, 255),
+    listening: makeGlow(90, 224, 210),
+    thinking: makeGlow(158, 124, 255),
+    speaking: makeGlow(150, 210, 255),
+  };
+
+  // core colour (r,g,b) per state - drives the central glow + filaments
+  const CORE_RGB = {
+    idle: [96, 150, 236],
+    wake: [150, 236, 255],
+    listening: [74, 214, 200],
+    thinking: [150, 118, 255],
+    speaking: [128, 196, 255],
   };
 
   const STATE_PARAMS = {
-    idle:      { spread: 1.00, jitter: 0.004, swirl: 0.020, pull: 0.00, bright: 0.55 },
+    idle:      { spread: 1.00, jitter: 0.003, swirl: 0.013, pull: 0.00, bright: 0.52 },
     wake:      { spread: 0.80, jitter: 0.020, swirl: 0.150, pull: 0.40, bright: 1.00 },
-    listening: { spread: 1.07, jitter: 0.006, swirl: 0.045, pull: 0.00, bright: 0.75 },
-    thinking:  { spread: 0.95, jitter: 0.030, swirl: 0.300, pull: 0.08, bright: 0.62 },
-    speaking:  { spread: 1.03, jitter: 0.018, swirl: 0.085, pull: 0.00, bright: 0.90 },
+    listening: { spread: 1.06, jitter: 0.005, swirl: 0.038, pull: 0.00, bright: 0.74 },
+    thinking:  { spread: 0.95, jitter: 0.026, swirl: 0.270, pull: 0.08, bright: 0.62 },
+    speaking:  { spread: 1.03, jitter: 0.014, swirl: 0.070, pull: 0.00, bright: 0.90 },
   };
 
   // ────────────────────────────────────────────────────────────────
@@ -89,7 +98,9 @@
       this.shock = [];         // wake shockwaves
       this.sparks = [];        // speaking sparks
       this._frames = [];
+      this.coreRGB = [...CORE_RGB.idle];   // eased toward the state colour
       this._buildParticles();
+      this._buildFilaments();
       this._resize();
       window.addEventListener("resize", () => this._resize());
       this._loop = this._loop.bind(this);
@@ -110,6 +121,25 @@
           ph: Math.random() * Math.PI * 2,
           sp: 0.6 + Math.random() * 0.9,
           rj: Math.random(),
+        });
+      }
+    }
+
+    _buildFilaments() {
+      // thin curved "synapse" lines radiating from the core; a bright pulse
+      // travels outward along each on a staggered loop
+      this.fil = [];
+      const n = 16;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+        this.fil.push({
+          a,
+          reach: 1.15 + Math.random() * 1.05,      // * baseR - stays near the orb
+          bow: (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.55), // curl
+          drift: 0.04 + Math.random() * 0.10,      // slow angular sway speed
+          phase: Math.random(),                    // pulse offset 0..1
+          speed: 0.07 + Math.random() * 0.09,      // pulse travel speed
+          alpha: 0.07 + Math.random() * 0.08,
         });
       }
     }
@@ -163,6 +193,8 @@
       const tgt = STATE_PARAMS[this.state];
       const k = 1 - Math.pow(0.001, dt / 1000);
       for (const key in tgt) this.cur[key] += (tgt[key] - this.cur[key]) * k;
+      const ctgt = CORE_RGB[this.state] || CORE_RGB.idle;
+      for (let i = 0; i < 3; i++) this.coreRGB[i] += (ctgt[i] - this.coreRGB[i]) * k;
       if (this.blend < 1) this.blend = Math.min(1, this.blend + dt / 480);
       this.ttsPulse *= Math.pow(0.9, dt / 16);
 
@@ -181,6 +213,9 @@
       const jitter = this.cur.jitter + speakJit + (this.state === "listening" ? this.energy * 0.05 : 0);
       const bright = this.cur.bright + (this.state === "listening" ? this.energy * 0.3 : 0);
       const FOV = 2.2;
+
+      // ambient: vignette + core bloom + synapse filaments + wave floor
+      this._drawAmbient(ctx, cx, cy, now, dt);
 
       ctx.globalCompositeOperation = "lighter";
 
@@ -247,6 +282,91 @@
 
       ctx.globalAlpha = 1;
       requestAnimationFrame(this._loop);
+    }
+
+    _drawAmbient(ctx, cx, cy, now, dt) {
+      const [r, g, b] = this.coreRGB.map(Math.round);
+      const R = this.baseR;
+      const t = now / 1000;
+      const energyBoost = this.state === "listening" ? this.energy * 0.5 : 0;
+      const speakBoost = this.state === "speaking" ? Math.min(0.5, this.ttsPulse * 0.35) : 0;
+      const pulse = 0.85 + Math.sin(t * (this.state === "thinking" ? 2.6 : 1.1)) * 0.15
+        + energyBoost + speakBoost;
+
+      // vignette - deepen the frame edges so the centre reads as a source
+      ctx.globalCompositeOperation = "source-over";
+      const vg = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, Math.max(this.w, this.h) * 0.75);
+      vg.addColorStop(0, "rgba(4,5,10,0)");
+      vg.addColorStop(1, "rgba(2,3,7,0.55)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, this.w, this.h);
+
+      ctx.globalCompositeOperation = "lighter";
+
+      // core bloom - three stacked radial gradients
+      for (const [rad, a] of [[1.35, 0.08], [0.82, 0.14], [0.38, 0.40]]) {
+        const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * rad * pulse);
+        cg.addColorStop(0, `rgba(${r},${g},${b},${a * pulse})`);
+        cg.addColorStop(0.55, `rgba(${r},${g},${b},${a * 0.32 * pulse})`);
+        cg.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * rad * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // synapse filaments - faint curved lines that fade out, + a travelling pulse
+      const spin = this.rot * 0.25;
+      for (const f of this.fil) {
+        const ang = f.a + spin + Math.sin(t * f.drift + f.phase * 6) * 0.10;
+        const sx0 = cx + Math.cos(ang) * R * 0.34;      // start at the orb's rim
+        const sy0 = cy + Math.sin(ang) * R * 0.34;
+        const ex = cx + Math.cos(ang) * R * f.reach;
+        const ey = cy + Math.sin(ang) * R * f.reach;
+        const nx = -Math.sin(ang), ny = Math.cos(ang);
+        const bow = f.bow * (0.6 + 0.4 * Math.sin(t * 0.3 + f.phase * 5));
+        const midx = (sx0 + ex) / 2 + nx * R * bow;
+        const midy = (sy0 + ey) / 2 + ny * R * bow;
+
+        const grad = ctx.createLinearGradient(sx0, sy0, ex, ey);
+        grad.addColorStop(0, `rgba(${r},${g},${b},${f.alpha})`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1 * this.dpr;
+        ctx.beginPath();
+        ctx.moveTo(sx0, sy0);
+        ctx.quadraticCurveTo(midx, midy, ex, ey);
+        ctx.stroke();
+
+        // travelling pulse along the curve
+        const u = (f.phase + t * f.speed) % 1;
+        const om = 1 - u;
+        const px = om * om * sx0 + 2 * om * u * midx + u * u * ex;
+        const py = om * om * sy0 + 2 * om * u * midy + u * u * ey;
+        const fade = Math.sin(u * Math.PI);          // dim at both ends
+        const sz = (1.6 + fade * 3) * this.dpr;
+        ctx.globalAlpha = fade * (0.42 + speakBoost);
+        ctx.drawImage(this.spriteCur, px - sz, py - sz, sz * 2, sz * 2);
+        ctx.globalAlpha = 1;
+      }
+
+      // wave floor - a few slow sine lines across the lower frame
+      const floorY = this.h * 0.86;
+      for (let li = 0; li < 3; li++) {
+        const amp = (10 + li * 8) * this.dpr;
+        const yoff = floorY + li * 16 * this.dpr;
+        const sp = 0.6 + li * 0.25;
+        ctx.strokeStyle = `rgba(${r},${g},${b},${0.06 - li * 0.014})`;
+        ctx.lineWidth = 1 * this.dpr;
+        ctx.beginPath();
+        for (let x = 0; x <= this.w; x += 22 * this.dpr) {
+          const y = yoff
+            + Math.sin(x * 0.004 + t * sp + li) * amp
+            + Math.sin(x * 0.011 - t * (sp * 0.7)) * amp * 0.4;
+          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
     }
 
     _autoThrottle(dt) {
@@ -502,19 +622,21 @@
         .replace(/\*([^*]+)\*/g, "$1")
         .replace(/_([^_]+)_/g, "$1")
         .replace(/^#{1,6}\s+/gm, "")
+        .replace(/^[ \t]*[-•*][ \t]+/gm, "")   // point-line markers
+        .replace(/^[ \t]*~[^\n]*$/gm, "")      // whole "~ source" footer line - never spoken
         .replace(/[*_#`]+/g, "")
         .replace(/["“”„‟«»]/g, "")
         .replace(/[()[\]]/g, "")
-        .replace(/\s{2,}/g, " ")
+        .replace(/[ \t]{2,}/g, " ")
         .trim();
     }
 
     speak(text, { onWord } = {}) {
       text = Voice.clean(text || "");
       if (this.muted || !text) return;
-      // one utterance per sentence keeps latency low and lets her start talking
-      // before the model has finished generating
-      for (const part of text.split(/(?<=[.!?…])\s+/)) {
+      // one utterance per sentence (or point line) keeps latency low and lets
+      // her start talking before the model has finished generating
+      for (const part of text.split(/(?<=[.!?…])\s+|\n+/)) {
         if (!part.trim()) continue;
         const u = new SpeechSynthesisUtterance(part.trim());
         if (this.voice) u.voice = this.voice;
@@ -531,7 +653,7 @@
   // ────────────────────────────────────────────────────────────────
   const Brain = {
     conversationId: null,
-    async ask(text, { onSentence, onMeta, onDone, onMemory, signal }) {
+    async ask(text, { onSentence, onToken, onStatus, onMeta, onDone, onMemory, signal }) {
       const res = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -563,7 +685,12 @@
             else if (line.startsWith("data:")) data += line.slice(5).trim();
           }
           const payload = data ? JSON.parse(data) : {};
-          if (ev === "token") { pending += payload.text || ""; emitSentences(false); }
+          if (ev === "token") {
+            onToken?.(payload.text || "");
+            pending += payload.text || "";
+            emitSentences(false);
+          }
+          else if (ev === "status") { onStatus?.(payload); }
           else if (ev === "meta") {
             this.conversationId = payload.conversation_id || this.conversationId;
             onMeta?.(payload);
@@ -602,6 +729,7 @@
       el("muteBtn").addEventListener("click", () => this._toggleMute());
       el("detailBtn").addEventListener("click", () => this._toggleDetails());
       el("sleepBtn").addEventListener("click", () => this._sleep(true));
+      el("briefing").addEventListener("click", () => { this._briefingActive = false; this._hideBriefing(); });
       this._initVoicePicker();
 
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -753,6 +881,7 @@
       }
       clearTimeout(this._sleepTimer);
       this._stopReply();                   // cancel anything still in flight
+      this._resetReply();                  // clear any prior briefing
       this.ears.setMode("busy");           // ignore the mic while she works
       this._setState("thinking");
       this._abort = new AbortController();
@@ -769,46 +898,61 @@
       }, 1000);
       const stopTick = () => clearInterval(this._tick);
 
-      let spokeAny = false;
       const queue = [];
 
       // each turn gets its own token; a new turn or an interrupt invalidates it
       const turn = (this._turn = (this._turn || 0) + 1);
       const alive = () => turn === this._turn;
 
-      // watchdog: if the backend hangs, don't stay stuck in "busy" forever
-      clearTimeout(this._busyGuard);
-      this._busyGuard = setTimeout(() => {
-        if (alive() && this.state !== "listening" && this.state !== "idle") {
-          console.warn("[nexa] turn watchdog fired");
-          this._doneSpeaking();
-        }
-      }, 35000);
+      // rolling watchdog: any event from the backend pushes it out. A slow
+      // tool (WhatsApp Web can take a minute) shouldn't abandon the turn.
+      const bumpGuard = () => {
+        clearTimeout(this._busyGuard);
+        this._busyGuard = setTimeout(() => {
+          if (alive() && this.state !== "listening" && this.state !== "idle") {
+            console.warn("[nexa] turn watchdog fired");
+            this._doneSpeaking();
+          }
+        }, 90000);
+      };
+      bumpGuard();
 
       Brain.ask(text, {
         signal: this._abort.signal,
+        onStatus: () => {
+          if (!alive()) return;
+          bumpGuard();
+          const s = Math.round((Date.now() - t0) / 1000);
+          this._say(`working… ${s}s`, false, true);
+        },
+        onToken: (tok) => { if (alive()) { bumpGuard(); this._onReplyToken(tok); } },
         onSentence: (s) => {
           if (!s || !alive()) return;
           stopTick();
+          bumpGuard();
           queue.push(s);
-          if (!spokeAny) {
-            spokeAny = true;
-            this._setState(this.voice.muted ? "listening" : "speaking");
-          }
+          this._beginSpeaking();
+          // once the reply is a list, the panel drives caption + speech
+          if (this._looksLikeBriefing) return;
           this._say(s);
-          if (!this.voice.muted) {
-            this.voice.speak(s, { onWord: () => this.field.pulse() });
-          }
+          this._speakChunk(s);
         },
-        onMeta: (p) => this._fillDetails(p),
+        onMeta: (p) => { if (alive()) bumpGuard(); this._fillDetails(p); },
         onMemory: (p) => this._fillDetails(p),
         onDone: () => {
           stopTick();
           if (!alive()) return;
+          this._tryBriefing(true);          // finalise title / meta lines
           const full = queue.join(" ").trim();
           if (!full) { this._say("I don't have anything for that."); this._doneSpeaking(); return; }
-          if (this.voice.muted) {
+          // a reply that looked like a list but never became a panel -> speak it plainly
+          if (this._looksLikeBriefing && !this._briefingActive) {
+            this._say(Voice.clean(full));
+            this._speakChunk(Voice.clean(full));
+          } else if (this.voice.muted && !this._briefingActive) {
             this._say(full);
+          }
+          if (this.voice.muted) {
             setTimeout(() => { if (alive()) this._doneSpeaking(); }, Math.min(9000, 1500 + full.length * 45));
           } else {
             this._waitForSynth(() => { if (alive()) this._doneSpeaking(); });
@@ -818,6 +962,8 @@
         stopTick();
         if (!alive() || (err && err.name === "AbortError")) return;
         console.error(err);
+        this._briefingActive = false;
+        this._hideBriefing();
         this._say("Something went wrong reaching my brain.", false, true);
         if (!this.voice.muted) this.voice.speak("Something went wrong reaching my brain.");
         this._doneSpeaking();
@@ -864,6 +1010,8 @@
       clearTimeout(this._sleepTimer);
       clearTimeout(this._busyGuard);
       this._stopReply();
+      this._briefingActive = false;
+      this._hideBriefing();
       if (this.ears) this.ears.setMode("idle");
       this._setState("idle");
       this._say('Say "Nexa" to wake me.', false, true);
@@ -876,6 +1024,118 @@
       captionEl.innerHTML = interim
         ? `<span class="interim">${escapeHtml(text)}</span>`
         : escapeHtml(text);
+    },
+
+    // ── briefing panel: elegant point-form view of informational replies ──
+    _resetReply() {
+      this._replyRaw = "";
+      this._briefingActive = false;
+      this._looksLikeBriefing = false;
+      this._briefKeys = new Set();
+      this._briefSpokeTitle = false;
+      this._spokeAny = false;
+      this._hideBriefing();
+    },
+
+    _onReplyToken(tok) {
+      this._replyRaw = (this._replyRaw || "") + (tok || "");
+      if (!this._looksLikeBriefing && /\n[ \t]*[-•*][ \t]+\S/.test(this._replyRaw)) {
+        this._looksLikeBriefing = true;   // once it's a list, TTS comes from the panel
+      }
+      this._tryBriefing(false);
+    },
+
+    _parseBriefing(raw) {
+      const norm = (s) => s
+        .replace(/\*\*(.+?)\*\*/g, "$1").replace(/[*_`]+/g, "")
+        .replace(/\s+/g, " ").trim();
+      const key = (s) => s.toLowerCase().replace(/\W+/g, "");
+      const lines = String(raw || "").split(/\r?\n/).map((l) => l.trim());
+      let title = "", meta = "";
+      const points = [], seen = new Set();
+      for (const line of lines) {
+        if (!line) continue;
+        let m;
+        if ((m = line.match(/^[-•*]\s+(.+)/)) || (m = line.match(/^\d+[.)]\s+(.+)/))) {
+          let p = norm(m[1]);
+          const mm = p.match(/^~\s*(.+)/);            // model wrote "- ~ source"
+          if (mm) { meta = norm(mm[1]); continue; }
+          const k = key(p);
+          if (p && k && !seen.has(k)) { seen.add(k); points.push(p); }
+        } else if ((m = line.match(/^~\s*(.+)/))) {
+          meta = norm(m[1]);
+        } else if (!points.length && !title) {
+          const c = norm(line).replace(/[:：]\s*$/, "");
+          if (c && c.length <= 90) title = c;
+        }
+      }
+      return points.length >= 2 ? { title, points: points.slice(0, 6), meta } : null;
+    },
+
+    _tryBriefing(final) {
+      const raw = this._replyRaw || "";
+      const data = this._parseBriefing(raw);
+      if (!data) return;
+      if (!final && !/\n\s*$/.test(raw) && data.points.length > 2) {
+        data.points = data.points.slice(0, -1);   // last point may still be streaming
+      }
+      if (!this._briefingActive && data.points.length < 2) return;
+      this._showBriefing(data);
+    },
+
+    _showBriefing(data) {
+      const wrap = el("briefing"), listEl = el("briefList");
+      const keyOf = (s) => s.toLowerCase().replace(/\W+/g, "");
+      if (!this._briefingActive) {
+        this._briefingActive = true;
+        this._briefKeys = new Set();
+        this._briefSpokeTitle = false;
+        listEl.innerHTML = "";
+        wrap.classList.remove("out");
+        wrap.hidden = false;
+        captionEl.classList.add("hide");
+      }
+      el("briefEyebrow").textContent = data.title ? "NEXA · BRIEFING" : "NEXA";
+      const tEl = el("briefTitle");
+      tEl.textContent = data.title || "";
+      tEl.style.display = data.title ? "" : "none";
+      el("briefMeta").textContent = data.meta || "";
+
+      if (data.title && !this._briefSpokeTitle) {
+        this._briefSpokeTitle = true;
+        this._beginSpeaking();
+        this._speakChunk(data.title);
+      }
+      for (const pt of data.points) {
+        const k = keyOf(pt);
+        if (!k || this._briefKeys.has(k)) continue;   // render each point once
+        this._briefKeys.add(k);
+        const li = document.createElement("li");
+        li.className = "briefing__item";
+        li.textContent = pt;
+        listEl.appendChild(li);
+        this._beginSpeaking();
+        this._speakChunk(pt);                          // speak as it lands - in sync
+      }
+    },
+
+    _beginSpeaking() {
+      if (this._spokeAny) return;
+      this._spokeAny = true;
+      this._setState(this.voice.muted ? "listening" : "speaking");
+    },
+
+    _speakChunk(text) {
+      if (!text || this.voice.muted) return;
+      this.voice.speak(text, { onWord: () => this.field.pulse() });
+    },
+
+    _hideBriefing() {
+      const wrap = el("briefing");
+      captionEl.classList.remove("hide");
+      if (!wrap || wrap.hidden) return;
+      wrap.classList.add("out");
+      setTimeout(() => { wrap.hidden = true; wrap.classList.remove("out"); }, 340);
     },
 
     _toggleMute() {

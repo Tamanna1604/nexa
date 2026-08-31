@@ -38,6 +38,11 @@ DO capture, even from partial or offhand mentions:
   before. Never store "this morning" / "today" / "yesterday" / "just now" as-is.
 - What the user is currently reading / watching / building / studying / working on
   -> type "fact", importance 4-6
+- Concrete things surfaced from the user's WhatsApp messages or emails that the
+  assistant just read out: who contacted them and why, an invitation or plan, a
+  commitment, a bill or payment due, an appointment, a deadline -> type "fact"
+  or "activity", importance 5-7. Record the specifics ("Dhruv asked User to
+  meet on Saturday at 5pm"), never "User has unread messages".
 - Preferences, goals, standing instructions, routines, likes and dislikes
 - Personal facts: where they live, their job, their studies, their name, festivals
   or events they take part in

@@ -36,6 +36,7 @@ from nexa.storage import ChromaVectorStore, SQLiteStore
 from nexa.storage.base import StructuredStore, VectorStore
 from nexa.tools import (
     ClockTool,
+    GmailTool,
     OpenAppTool,
     StreamingTool,
     ToolRegistry,
@@ -242,9 +243,22 @@ class Nexa:
         messages, mem_ctx, chunks = self._assemble(user_message, conversation_id)
 
         if self._use_tools_for(user_message):
-            # tool loop needs full (non-streamed) turns; emit the result in
-            # word-sized pieces so the UI still animates and TTS still chunks it
-            reply = self._generate(messages, user_message)
+            # tool loop needs full (non-streamed) turns and a tool (WhatsApp Web,
+            # a browser drive) can take a minute. Run it off-thread and emit a
+            # keepalive every few seconds so the client doesn't abandon the turn.
+            import threading
+
+            box: dict[str, str] = {}
+            worker = threading.Thread(
+                target=lambda: box.__setitem__("reply", self._generate(messages, user_message)),
+                daemon=True,
+            )
+            worker.start()
+            while worker.is_alive():
+                worker.join(timeout=4)
+                if worker.is_alive():
+                    yield {"type": "status", "text": "working"}
+            reply = box.get("reply", "")
             for piece in re.findall(r"\S+\s*", reply):
                 yield {"type": "token", "text": piece}
         else:
@@ -303,7 +317,8 @@ _TOOL_HINT = re.compile(
     r"weather|temperature|forecast|rain|raining|sunny|cloudy|snow|humid|"
     r"hot|cold|windy|degrees?|celsius|fahrenheit|"
     r"open|launch|start up|fire up|bring up|pull up|"
-    r"whatsapp|call|ring|dial|message|text|msg|"
+    r"whatsapp|call|ring|dial|message|text|msg|unread|reply|chat|chats|"
+    r"e-?mail|gmail|inbox|mail|"
     r"search|google|look up|lookup|browse|web|news|price|"
     r"mean|meaning|define|definition|explain|what is|what's|whats|"
     r"who is|tell me about|latest|current|"
@@ -451,6 +466,8 @@ def build_nexa() -> NexaBundle:
             tool_list.append(OpenAppTool())
             tool_list.append(WhatsAppTool())
             tool_list.append(StreamingTool())
+        if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
+            tool_list.append(GmailTool())
         tools = ToolRegistry(tool_list)
 
     nexa = Nexa(llm, memory, rag, store, tools=tools)

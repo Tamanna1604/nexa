@@ -1,12 +1,13 @@
 """Open a streaming service in the browser and jump to a title.
 
 Netflix / Prime Video / JioHotstar / YouTube, all through the browser (no
-desktop apps). Default behaviour: open the service's search page for the
-title - the show is the first tile, one click plays it.
+desktop apps). It opens the service's search page for the title in a NEW TAB
+of your running browser - you're already signed in there, so the show is the
+first tile and one click plays it.
 
-If BROWSER_AUTOMATION=true and Playwright is installed, action='play' goes
-further: Nexa drives Chrome to click through to playback itself. See
-nexa/tools/browser.py.
+Optional: with BROWSER_AUTOMATION=true (and a non-default Chrome profile dir,
+see nexa/tools/browser.py) action='play' can click through to playback itself.
+Off by default - modern Chrome blocks remote debugging on the default profile.
 """
 
 from __future__ import annotations
@@ -119,7 +120,7 @@ class StreamingTool(Tool):
 
         if title:
             return (
-                f"Opened {label} search for '{title}' - click the first result "
-                f"to start watching."
+                f"Opened {label} in a new tab, searched for '{title}' - click "
+                f"the first result to start watching."
             )
-        return f"Opened {label}."
+        return f"Opened {label} in a new tab."

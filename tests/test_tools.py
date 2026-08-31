@@ -228,8 +228,45 @@ def test_whatsapp_send_prefills_and_reports_manual_step(monkeypatch):
     launched = []
     monkeypatch.setattr(whatsapp, "_start", lambda uri: launched.append(uri))
     monkeypatch.setattr(whatsapp.settings, "ALLOW_UI_AUTOMATION", False)
+    monkeypatch.setattr(whatsapp.whatsapp_web, "available", lambda: False)
 
     tool = whatsapp.WhatsAppTool(contacts=_StubContacts())
     out = tool.run(contact="Vrinda", action="send", message="running late")
     assert launched and "text=running%20late" in launched[0]
     assert "typed" in out.lower()
+
+
+def test_whatsapp_send_routes_to_web_when_available(monkeypatch):
+    import nexa.tools.whatsapp as whatsapp
+
+    calls = []
+    monkeypatch.setattr(whatsapp.whatsapp_web, "available", lambda: True)
+    monkeypatch.setattr(whatsapp.whatsapp_web, "send",
+                        lambda name, msg: calls.append((name, msg)) or f'Sent to {name}: "{msg}"')
+    monkeypatch.setattr(whatsapp, "_start", lambda uri: (_ for _ in ()).throw(AssertionError("used desktop")))
+
+    out = whatsapp.WhatsAppTool(contacts=_StubContacts()).run(
+        contact="Vrinda", action="send", message="on my way"
+    )
+    assert calls == [("Vrinda", "on my way")]
+    assert "sent to vrinda" in out.lower()
+
+
+def test_whatsapp_unread_needs_browser_link(monkeypatch):
+    import nexa.tools.whatsapp as whatsapp
+
+    monkeypatch.setattr(whatsapp.whatsapp_web, "available", lambda: False)
+    out = whatsapp.WhatsAppTool(contacts=_StubContacts()).run(action="unread")
+    assert "browser_automation" in out.lower() or "qr" in out.lower()
+
+
+# ── gmail (not configured) ──────────────────────────────────────────
+def test_gmail_not_configured(monkeypatch):
+    from nexa.tools.gmail import GmailTool
+    import nexa.tools.gmail as gmail
+
+    monkeypatch.setattr(gmail.settings, "GMAIL_ADDRESS", "")
+    monkeypatch.setattr(gmail.settings, "GMAIL_APP_PASSWORD", "")
+    out = GmailTool().run(action="unread")
+    assert "isn't set up" in out.lower()
+    assert GmailTool().spec()["function"]["name"] == "gmail"

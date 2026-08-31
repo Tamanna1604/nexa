@@ -132,8 +132,18 @@ class Settings(BaseSettings):
     # (pip install playwright && playwright install chromium). Off = it just
     # opens the service's search page in your browser.
     BROWSER_AUTOMATION: bool = False
-    # Dedicated Chrome profile dir for that automation - log into Netflix /
-    # Prime / Hotstar once in that window and the session persists here.
+    # Drive your REAL, logged-in Chrome for the `watch` tool. Chrome allows one
+    # process per profile, so if Chrome is already running Nexa closes it,
+    # reopens it with a debugging port (your tabs restore), then attaches.
+    # Set False to use the isolated throwaway profile in BROWSER_PROFILE_DIR
+    # instead (you log into Netflix/Prime/Hotstar once in that window).
+    CHROME_USE_REAL_PROFILE: bool = True
+    # Chrome's "User Data" folder. Blank = auto-detect the OS default.
+    CHROME_USER_DATA_DIR: str = ""
+    # Which Chrome profile inside it holds your Netflix login: "Default",
+    # "Profile 1", ... See chrome://version -> "Profile Path" (last segment).
+    CHROME_PROFILE_DIRECTORY: str = "Default"
+    # Isolated profile dir, used only when CHROME_USE_REAL_PROFILE=False.
     BROWSER_PROFILE_DIR: str = str(ROOT / ".nexa_browser")
     # Which Netflix "Who's watching?" profile to pick before playing. Blank =
     # take whatever profile is already active / the first one.
@@ -147,6 +157,15 @@ class Settings(BaseSettings):
     # whatsapp action='send' pressing Enter). off by default - it's fragile and
     # takes over focus. needs `pip install pywinauto`.
     ALLOW_UI_AUTOMATION: bool = False
+    # seconds to wait for the WhatsApp desktop window before pressing send
+    # (fallback path only; WhatsApp Web is used when BROWSER_AUTOMATION=true).
+    WHATSAPP_SEND_DELAY: float = 4.0
+
+    # ---- Gmail (read-only, via IMAP) --------------------------------
+    # An App Password from myaccount.google.com/apppasswords (needs 2FA on).
+    # Both set -> the `gmail` tool is available.
+    GMAIL_ADDRESS: str = ""
+    GMAIL_APP_PASSWORD: str = ""
 
     # ---- API -------------------------------------------------------
     API_HOST: str = "127.0.0.1"
